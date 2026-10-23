@@ -3,27 +3,191 @@ const fs = require('fs');
 const cron = require('node-cron');
 
 const CHANNEL_ID = "1543140705206276158";
-const MIN_RANDOM_NUM = 1;
-const MAX_RANDOM_NUM = 10000;
-const MAX_MESSAGES = 200; // Hạ chỉ tiêu xuống mức an toàn để tránh bị Discord ban token
+const MAX_MESSAGES = 200; // Giới hạn số tin nhắn an toàn mỗi ngày cho mỗi nick
 
-let isGlobalChatting = false; // Biến khóa hàng chờ toàn cục
+let isGlobalChatting = false; // Biến khóa hàng chờ toàn cục để tránh spam dồn dập
 
-const HUMAN_CHAT_TEMPLATES = [
-    "số mấy đây ta... {num}",
-    "test nhân phẩm phát {num}",
-    "ra con số gì đây? {num}",
-    "mong là trúng {num} nha",
-    "chốt hạ quả số {num} xem sao",
-    "ae thấy số {num} có đẹp ko?",
-    "làm tí vận may {num} nè",
-    "gửi nhẹ cái số {num} lấy hên",
-    "đỏ ăn đen chịu nha {num}",
-    "bú quả số {num} xem nào",
-    "chấm cái {num}",
-    "vừa nằm mơ thấy số {num} luôn á",
-    "đánh đại số {num} vậy",
-    "xoay tua số {num} nha ae"
+// Danh sách 500 câu chat đa dạng
+const PURE_CHAT_TEMPLATES = [
+    // --- 1. CHÀO HỎI & NGOI LÊN (1 - 50) ---
+    "Hello cả nhà nhé!", "Mọi người ơi, có ai ở đây không nhở?", "Lên đây điểm danh phát nào ae ơi", 
+    "Hello ngày mới tốt lành nha cả nhà", "Chào mọi người, chúc mọi người một ngày vui vẻ", 
+    "Ai vừa ngoi lên thế nhỉ", "Tui lại ngoi lên chém gió đây", "Alo alo 1 2 3 4", 
+    "Có ai đang rảnh không nào", "Chào buổi sáng cả nhà", "Buổi chiều vui vẻ nha mọi người", 
+    "Buổi tối an lành nha anh em", "Ngoi lên hít thở không khí tí", "Lại là tui đây mọi người ơi", 
+    "Mới ngủ dậy mệt quá ae ơi", "Ai còn thức không nhờ?", "Cú đêm đâu hết rồi nhỉ", 
+    "Chào cả nhà thân yêu nha", "Vừa đăng nhập vào hóng hớt tí", "Ghé qua chào anh em cái", 
+    "Hôm nay thế nào rồi mọi người?", "Mọi người khỏe không?", "Lên ngó nghiêng kênh chat phát", 
+    "Hi anh em, lại là tui nè", "Chủ nhật vui vẻ nha cả nhà", "Thứ hai là ngày đầu tuần...", 
+    "Lại chuẩn bị hết tuần rồi nhanh thật", "Xin chào xin chào!", "Có ai nhớ tui không nè", 
+    "Bắt đầu ngày mới thôi anh em", "Hôm nay có gì hot không cả nhà", "Có ai đang online không", 
+    "Xin chào các đồng chí nhé", "Lên sóng phát nào", "Alo có ai ở nhà không?", 
+    "Hôm nay trôi qua thế nào rồi mọi người?", "Mới làm xong việc ngó vào tí", "Chào buổi trưa cả nhà nhé", 
+    "Chúc ae một ngày làm việc hiệu quả", "Chào cả nhà, chúc mọi người nhiều may mắn", 
+    "Lên hóng Drama tí nào", "Chào ngày mới tràn đầy năng lượng", "Lại một ngày nữa trôi qua", 
+    "Ngoi lên phát rồi tí lại lặn", "Vẫn là không khí quen thuộc ở đây", "Hi ae, có tin gì mới không?", 
+    "Ngoi lên chào cái rồi đi ăn cơm", "Điểm danh nhẹ cái rồi làm việc tiếp", 
+    "Hôm nay có vẻ im ắng thế nhỉ", "Chào mọi người nhé, chúc lành lành nè!",
+
+    // --- 2. HỎI THĂM & CHÉM GIÓ ĐỜI SỐNG (51 - 120) ---
+    "Mọi người đang làm gì thế?", "Nay thời tiết chán quá nhỉ", "Chán ghê cơ, vào đây chém gió với ae cho vui", 
+    "Dạo này thế nào rồi mọi người?", "Căng thẳng quá, lên đây thả lỏng tí", "Ngồi máy tính mỏi hết cả lưng", 
+    "Làm ly nước rồi chiến tiếp thôi", "Chém gió phát cho đỡ buồn ngủ nào", "Ae dạo này cày cuốc gì chưa", 
+    "Vừa đi đâu về mệt quá ae ạ", "Cả ngày cắm mặt vào màn hình chóng mặt thật chứ", 
+    "Trời hôm nay âm u ghê luôn", "Nắng nóng thế này chỉ muốn ở trong phòng máy lạnh", 
+    "Mưa gió bão bùng thế này chán thật", "Trời lạnh này chỉ muốn rúc trong chăn", 
+    "Mọi người đã ăn uống gì chưa?", "Nghỉ ngơi tí thôi mệt mỏi quá rồi", 
+    "Hôm nay công việc thế nào rồi ae?", "Một ngày làm việc thật là dài", "Cuối cùng cũng đến giờ nghỉ", 
+    "Mệt mỏi nhưng vẫn phải cố gắng thôi", "Có ai bị deadline dí như tui không", 
+    "Cố nốt hôm nay rồi nghỉ ngơi thôi mọi người", "Đời là những chuyến đi...", 
+    "Uống nhiều nước vào nha mọi người", "Thèm đi du lịch quá đi mất", "Lâu lắm rồi chưa được đi đâu xa", 
+    "Mọi người thích mưa hay thích nắng hơn?", "Thời tiết này dễ ốm thật đấy", 
+    "Nhớ giữ giữ ấm nhé mọi người", "Bật quạt đắp chăn là chân lý", "Nằm lướt điện thoại tí", 
+    "Dạo này nhiều việc quá mệt mỏi ghê", "Muốn có một kỳ nghỉ dài hạn quá", 
+    "Làm việc chăm chỉ rồi thưởng cho bản thân thôi", "Mọi người hôm nay có chuyện gì vui không?", 
+    "Nghe một bản nhạc cho đời nhẹ nhàng hơn", "Nhìn ra cửa sổ thấy bình yên ghê", 
+    "Mới đi tập thể dục về mệt nhưng vui", "Tập tành tí cho lên cơ nào", "Giữ gìn sức khỏe nhé anh em", 
+    "Cuộc sống dạo này quay như chong chóng", "Bình tĩnh sống thôi mọi người", 
+    "Thời gian trôi nhanh như chớp mắt", "Mới đó mà đã giữa tháng rồi", 
+    "Sắp hết năm đến nơi rồi anh em ạ", "Tết đến đít rồi lo quá ae", 
+    "Mọi người tính tiền ăn tết chưa?", "Dạo này kinh tế khó khăn quá tui mệt mỏi", 
+    "Làm ăn dạo này chán quá mọi người ạ", "Hi vọng mọi thứ sẽ tốt đẹp hơn", 
+    "Sống chậm lại một chút để cảm nhận", "Đôi khi thấy áp lực ghê gớm", 
+    "Tự thưởng cho mình một ly cà phê", "Cà phê sáng thôi anh em ơi", 
+    "Pha ly trà nóng uống cho ấm người", "Nghỉ tay xíu chém gió nào", 
+    "Ngồi một chỗ hoài ê mông quá", "Đứng dậy vươn vai phát nào", 
+    "Mắt bắt đầu dại ra rồi nè", "Chắc phải đi rửa mặt cho tỉnh táo", 
+    "Ngáp ngắn ngáp dài từ sáng tới giờ", "Đêm qua mất ngủ chán ghê", 
+    "Mơ thấy điều lạ lắm mọi người ạ", "Ngủ sớm đi nha mọi người ơi", 
+    "Thức khuya hại sức khỏe lắm đấy", "Thôi cố gắng vì tương lai tươi sáng", 
+    "Học cách yêu thương bản thân nhiều hơn", "Mỗi ngày chọn một niềm vui", 
+    "Lên đây nói chuyện thấy bớt cô đơn hẳn",
+
+    // --- 3. ĐỒ ĂN & BỤNG ĐÓI (121 - 180) ---
+    "Hôm nay đói bụng quá, có ai ăn gì chưa?", "Tự nhiên thấy thèm trà sữa ghê", 
+    "Trưa nay ăn gì bây giờ mọi người?", "Tối nay ăn món gì ngon ngon ta", 
+    "Thèm bún đậu mắm tôm quá xá", "Có ai cuồng ăn đồ nướng giống tui không", 
+    "Mùa này ăn lẩu là chuẩn bài luôn", "Làm bát phở nóng hổi thì tuyệt", 
+    "Thèm ăn đồ ngọt quá đi mất", "Đang ăn cơm bento ngon lành nè", 
+    "Ăn tối thôi mọi người ơi", "Uống ly trà đào sảng khoái ghê", 
+    "Đói mờ cả mắt rồi anh em ạ", "Mới ăn xong no căng cả bụng", 
+    "Nghĩ xem trưa nay ăn gì cũng đau đầu", "Món ăn yêu thích của mọi người là gì?", 
+    "Thèm một ly cà phê muối ghê", "Ăn vặt tí cho đỡ buồn miệng", 
+    "Bánh mì đê mọi người ơi", "Thèm cơm tấm sườn nướng quá", 
+    "Uống nhiều trà sữa coi chừng mập nha", "Đang ăn kiêng mà thèm đủ thứ", 
+    "Quyết tâm giảm cân từ ngày mai!", "Ăn là niềm vui duy nhất lúc này", 
+    "Mọi người thích ăn cay không?", "Nhìn đồ ăn trên mạng thèm nhỏ dãi", 
+    "Vừa nấu xong một bữa ăn ngon lành", "Nấu ăn cũng là một nghệ thuật đấy", 
+    "Thèm trà chanh giã tay quá", "Hôm nay tự thưởng bữa ăn hoành tráng", 
+    "Đói bụng lúc đêm muộn là một tội ác", "Tìm đồ ăn đêm thôi anh em", 
+    "Mì tôm trứng - món ăn quốc dân", "Ăn mì tôm hoài nóng quá", 
+    "Uống nhiều nước mát cho thanh lọc cơ thể", "Thèm sinh tố bơ quá đi", 
+    "Sầu riêng thơm nức mũi luôn", "Mùa hoa quả ngập tràn rồi", 
+    "Thèm ăn đồ Hàn Quốc quá", "Món Nhật ngon nhưng đắt ghê", 
+    "Thèm pizza phô mai kéo sợi", "Gà rán giòn rụm rôm rốp", 
+    "Ăn uống đầy đủ vào mới có sức làm việc", "Đừng bỏ bữa nha mọi người", 
+    "Bữa sáng là quan trọng nhất đấy", "Vừa làm ly nước ép trái cây ngon tuyệt", 
+    "Ăn hoa quả tráng miệng thôi", "Món nhà làm vẫn là đỉnh nhất", 
+    "Thèm về quê ăn cơm mẹ nấu quá", "Cơm tiệm ăn hoài cũng ngán", 
+    "Thèm đồ cuốn mát rượi", "Làm chè thái sầu riêng không ae?", 
+    "Boba bọt tuyết thơm lừng", "Trà sữa 50% đường 50% đá chuẩn bài", 
+    "Thèm xúc xích nướng đá quá đi", "Bánh tráng trộn siêu cay khè ra lửa", 
+    "Bánh tráng nướng đà lạt giòn rụm", "Ăn nhiều quá coi chừng béo phì", 
+
+    // --- 4. GAME, PHIM ẢNH & GIẢI TRÍ (181 - 250) ---
+    "Có ai chơi game gì không ae ơi", "Ai rảnh làm ván game không ta", 
+    "Tối nay có kèo gì chơi chung không mọi người", "Dạo này có tựa game gì hay ho không ae", 
+    "Xem phim xong chán quá lại vào đây", "Ai kéo hạng với tui không, đang chuỗi thua cay quá", 
+    "Chơi game toàn gặp đồng đội ngáo chán ghê", "Gánh team còng cả lưng anh em ạ", 
+    "Mới tậu được quả skin đẹp đỉnh kute", "Game dạo này update nhiều cái hay phết", 
+    "Có ai chơi Liên Quân / Tốc Chiến không?", "Có ai cày Valorant / CSGO không nhở?", 
+    "Chơi PUBG quẩy leo top 1 nào", "Game PC dạo này nhiều trò nặng máy quá", 
+    "Máy cùi chơi game lag tung chảo", "Ước có dàn PC khủng để chiến game", 
+    "Ai xem bộ phim mới ra chưa?", "Có phim gì hay giới thiệu tui với", 
+    "Mới cày xong bộ phim hay xỉu luôn", "Phim kết thúc chán đời quá", 
+    "Đang cày lại bộ phim tuổi thơ", "Thích xem phim hành động hay tình cảm hơn?", 
+    "Cuối tuần đi rạp xem phim thôi", "Nghe nhạc chill chill xua tan mệt mỏi", 
+    "Ai có list nhạc hay cho xin với", "Nhạc dạo này nhiều bài bắt tai ghê", 
+    "Đang mê giai điệu bài này quá", "Nghe nhạc không lời cho dễ tập trung", 
+    "Thích nghe nhạc Lofi nhẹ nhàng", "Gu âm nhạc của mọi người là gì?", 
+    "Mới xem xong cái clip hài cười xỉu", "Lướt TikTok cả tiếng đồng hồ rồi", 
+    "TikTok dạo này lắm trend độc lạ ghê", "Nghiện lướt Reels mất rồi", 
+    "Có ai thích đọc truyện tranh không?", "Cày xong bộ manga đỉnh cao luôn", 
+    "Anime mùa này nhiều bộ chất lượng phết", "Chờ ra tập mới mà dài cổ", 
+    "Chơi game giải trí thôi đừng quạu nha", "Thắng làm vua thua làm lại", 
+    "Chiến game xuyên đêm không anh em?", "Thôi out game đi ngủ cho lành", 
+    "Game là ảo nhưng tình nghĩa là thật", "Sắm được quả tai nghe xịn xò ghê", 
+    "Bàn phím gõ lách cách nghe vui tai", "Chuột game thủ nhảy nhạy phết", 
+    "Cấu hình này chiến mượt mọi game", "Thèm chơi game offline cốt truyện hay", 
+    "Cày game quên ăn quên ngủ luôn", "Nghỉ tay chơi game tí rồi làm tiếp", 
+    "Có ai mê board game không?", "Ma Sói / Uno quẩy căng đét", 
+    "Chơi game với bạn bè vui nhất", "Tối nay hẹn hò gank team nhé", 
+
+    // --- 5. TƯƠNG TÁC XÃ HỘI & CHÉM GIÓ VUI (251 - 330) ---
+    "Chuẩn luôn không phải chỉnh", "Công nhận đúng thật đấy", "Có ai thấy giống tui không", 
+    "Hôm nay trôi qua nhanh thật đấy", "Mong đến cuối tuần quá đi mất", 
+    "Ai có nhạc gì hay share nghe ké với", "Nghe bảo dạo này thời tiết lạ lắm", 
+    "Thôi tranh thủ nghỉ ngơi một tí đã", "Đúng là trên đời cái gì cũng có thể xảy ra", 
+    "Thật không thể tin nổi!", "Aizz cái số nó khổ thế đấy", "Nói chung là đời vẫn đẹp sao", 
+    "Làm gì thì làm cứ phải vui vẻ trước đã", "Sống tích cực lên mọi người ơi", 
+    "Haha buồn cười quá đi mất", "Đọc comment của ae mà cười rớt hàm", 
+    "Thế là thế nào nhở???", "Ảo thật đấy anh em ạ", "Đúng là dị nhân luôn", 
+    "Sao lại có thể như thế được ta", "Quá là hợp lý luôn!", "Không còn gì để chê nữa", 
+    "Đỉnh của chóp luôn anh em", "10 điểm không có nhưng", "Mãi đỉnh mãi đỉnh!", 
+    "Uy tín luôn nha mọi người", "Chắc chắn là như vậy rồi", "Chuẩn đét không lệch đi đâu được", 
+    "Nghe chừng có vẻ hợp lý đấy", "Thôi xong, thế là tiêu rồi", "Toang thật rồi ông giáo ạ", 
+    "Xu cà cà luôn", "Gì mà căng thế anh em", "Bình tĩnh làm ly nước hạ hỏa nào", 
+    "Dĩ hòa quý quý nha anh em", "Mỗi người bớt một lời cho êm đẹp", 
+    "Tình nghĩa anh em chắc có bền lâu?", "Hiểu luôn vấn đề rồi nha", 
+    "Không biết nói gì luôn á", "Cạn lời thật sự", "Thôi chịu luôn rồi", 
+    "Nối từ không anh em?", "Đố vui có thưởng nào", "Ai thông minh hơn học sinh lớp 5", 
+    "Bí ẩn thế giới thật kỳ diệu", "Đúng là trăm nghe không bằng một thấy", 
+    "Mỗi ngày học thêm một điều mới", "Trải nghiệm thực tế vẫn là tốt nhất", 
+    "Nói ít hiểu nhiều nha", "Học ăn học nói học gói học mở", "Lời nói không mất tiền mua...", 
+    "Nói chuyện dễ thương ghê", "Khen thiệt lòng đó nha", "Cảm ơn mọi người nhiều nhé", 
+    "Chúc mọi người may mắn", "Thật là tuyệt vời", "Thích không khí ở đây ghê", 
+    "Mọi người nhiệt tình quá", "Đúng là môi trường văn minh", "Thả tim cho cả nhà nè", 
+
+    // --- 6. HỌC TẬP, CÔNG VIỆC & TƯƠNG LAI (331 - 400) ---
+    "Học học nữa học mãi", "Kiến thức là vô tận", "Cố gắng tích lũy kinh nghiệm thôi", 
+    "Mới hoàn thành xong bài tập mệt vãi", "Thi cử dạo này áp lực quá", 
+    "Chúc các sĩ tử thi tốt nha", "Ôn thi xuyên đêm luôn nè", "Nỗ lực rồi sẽ được đền đáp", 
+    "Thành công không dành cho kẻ lười biếng", "Muốn giàu thì phải làm lụng", 
+    "Học ngoại ngữ gian nan phết", "Cố gắng mỗi ngày 1% tốt hơn", 
+    "Sách là nguồn tri thức vô giá", "Mới đọc xong cuốn sách hay lắm", 
+    "Tìm được niềm đam mê mới rồi", "Làm việc có kế hoạch vẫn tốt hơn", 
+    "Quản lý thời gian hiệu quả nhé", "Đặt mục tiêu cho tương lai thôi", 
+    "Ước mơ sau này làm tỷ phú", "Có công mài sắt có ngày nên kim", 
+    "Học hỏi từ những sai lầm", "Thất bại là mẹ thành công", "Không gì là không thể", 
+    "Hãy tin vào chính mình", "Vượt qua giới hạn của bản thân", "Công việc dạo này tiến triển tốt", 
+    "Sắp được thăng chức rồi ae ơi", "Khai phá tiềm năng ẩn giấu", "Sáng tạo là không giới hạn", 
+    "Đầu tư vào bản thân là không bao giờ lỗ", "Rèn luyện tư duy logic", 
+    "Làm việc nhóm cần sự phối hợp", "Lắng nghe để hiểu nhau hơn", 
+    "Tôn trọng ý kiến cá nhân", "Cùng nhau phát triển nhé", "Môi trường năng động ghê", 
+    "Học hỏi được nhiều điều hay", "Cảm ơn vì bài học bổ ích", "Thực hành nhiều cho quen tay", 
+    "Mệt nhưng đáng giá", "Quả ngọt sẽ đến sớm thôi", "Mọi sự nỗ lực đều có giá trị", 
+
+    // --- 7. TÂM TƯ & TẢN MẠN ĐÊM KHUYA (401 - 500) ---
+    "Đêm đã về khuya rồi...", "Không gian yên tĩnh thích ghê", "Gió đêm lạnh ngắt", 
+    "Ngắm sao đêm lung linh", "Trằn trọc mãi không ngủ được", "Suy nghĩ vớ vẩn lúc đêm muộn", 
+    "Nhớ về những kỷ niệm cũ", "Thời gian trôi qua không bao giờ trở lại", 
+    "Mỗi người một lựa chọn cuộc sống", "Tự nhiên thấy lòng trầm lại", 
+    "Đêm khuya nghe nhạc buồn thấm thật", "Cảm xúc dâng trào quá", 
+    "Mong mọi chuyện sẽ ổn thôi", "Mọi thứ rồi sẽ qua mau", "Sau cơn mưa trời lại sáng", 
+    "Hãy luôn giữ nụ cười trên môi", "Yêu thương nhiều hơn mỗi ngày", 
+    "Chăm sóc bản thân thật tốt nhé", "Cảm ơn vì đã luôn ở đây", "Đêm nay dài quá...", 
+    "Chờ đợi một tia hy vọng", "Cuộc sống luôn có những bất ngờ", "Nỗ lực vì người mình yêu thương", 
+    "Gia đình là trên hết", "Về nhà luôn là bình yên nhất", "Tự tay dựng xây tương lai", 
+    "Sống trọn vẹn từng khoảnh khắc", "Đừng để thanh xuân trôi qua lãng phí", 
+    "Hành trình vạn dặm bắt đầu từ một bước chân", "Cứ đi rồi sẽ đến", 
+    "Bình thản đối mặt với khó khăn", "Dũng cảm bước tiếp thôi", 
+    "Tin vào những điều kỳ diệu", "Mơ những giấc mơ đẹp", "Chúc cả nhà ngủ ngon nhé", 
+    "Gửi gắm ngàn lời chúc tốt đẹp", "Nghỉ ngơi thôi, muộn lắm rồi", 
+    "Tắt máy đi ngủ thôi anh em ơi", "Hẹn gặp lại mọi người vào ngày mai", 
+    "Good night cả nhà nhé!", "Ngủ ngon và mơ đẹp nha", "Tắt đèn tối thui rồi", 
+    "Cú đêm chuẩn bị thăng đây", "Mắt nhắm tịt lại rồi", "Chào tạm biệt mọi người nha", 
+    "Mai lại gặp lại chém gió tiếp", "Chúc mọi người có một giấc ngủ thật ngon", 
+    "Khép lại một ngày dài...", "Hẹn hò ngày mai nhé!", "Sweet dreams mọi người ❤️"
 ];
 
 let activeClients = [];
@@ -46,10 +210,47 @@ function getRandomFloat(min, max) {
     return Math.random() * (max - min) + min;
 }
 
-function generateHumanMessage() {
-    const template = HUMAN_CHAT_TEMPLATES[Math.floor(Math.random() * HUMAN_CHAT_TEMPLATES.length)];
-    const randomNum = getRandomInt(MIN_RANDOM_NUM, MAX_RANDOM_NUM);
-    return template.replace("{num}", randomNum);
+// Hàm kiểm tra lịch sử chat và chọn câu chưa từng xuất hiện gần đây
+async function generateUniqueMessageWithTag(channel, currentClientUser) {
+    let recentTexts = [];
+    let recentUsers = [];
+
+    try {
+        // Quét 40 tin nhắn gần nhất trong kênh
+        const recentMessages = await channel.messages.fetch({ limit: 40 });
+
+        recentMessages.forEach(msg => {
+            if (msg.content) {
+                recentTexts.push(msg.content.trim().toLowerCase());
+            }
+            // Thu thập các thành viên thật gần đây (bỏ qua bot và chính mình)
+            if (msg.author && !msg.author.bot && msg.author.id !== currentClientUser.id) {
+                if (!recentUsers.some(u => u.id === msg.author.id)) {
+                    recentUsers.push(msg.author);
+                }
+            }
+        });
+    } catch (err) {
+        // Lỗi đọc kênh thì bỏ qua
+    }
+
+    // Lọc ra danh sách những câu chưa từng xuất hiện trong 40 tin nhắn gần đây
+    const availableTemplates = PURE_CHAT_TEMPLATES.filter(tpl => {
+        return !recentTexts.some(text => text.includes(tpl.toLowerCase()));
+    });
+
+    // Nếu lọc xong vẫn còn câu thì chọn câu mới, nếu hết thì lấy ngẫu nhiên từ mảng gốc
+    const pool = availableTemplates.length > 0 ? availableTemplates : PURE_CHAT_TEMPLATES;
+    let selectedText = pool[Math.floor(Math.random() * pool.length)];
+
+    // Tỷ lệ 40% sẽ chèn thêm tag/tên của một thành viên ngẫu nhiên gần đây
+    if (Math.random() < 0.4 && recentUsers.length > 0) {
+        const randomUser = recentUsers[Math.floor(Math.random() * recentUsers.length)];
+        const userTag = Math.random() < 0.5 ? `<@${randomUser.id}>` : `${randomUser.username}`;
+        selectedText = `${selectedText} ${userTag}`;
+    }
+
+    return selectedText;
 }
 
 const delayTime = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -70,7 +271,7 @@ async function startBot(token, index) {
             while (sentCount < MAX_MESSAGES) {
                 if (!client.isReady()) break;
 
-                // Xếp hàng: Chờ nick khác hoàn thành lượt
+                // Xếp hàng: Chờ nick khác hoàn thành lượt chat
                 while (isGlobalChatting) {
                     await delayTime(1000);
                 }
@@ -83,17 +284,18 @@ async function startBot(token, index) {
                     const silentDelay = getRandomInt(10, 25);
                     await delayTime(silentDelay * 1000);
 
-                    const messageToSend = generateHumanMessage();
+                    // Lấy câu chat mới không trùng lặp + tag ngẫu nhiên
+                    const messageToSend = await generateUniqueMessageWithTag(channel, client.user);
 
-                    // Giả lập trạng thái đang gõ phím (2 - 4s)
+                    // Gi giả lập trạng thái đang gõ phím (2 - 4s)
                     await channel.sendTyping();
                     const typingTime = getRandomInt(2, 4); 
                     await delayTime(typingTime * 1000);
 
-                    // Gửi tin nhắn
+                    // Gửi tin nhắn chữ
                     await channel.send(messageToSend);
                     sentCount++;
-                    console.log(`[Bot 3 - Acc ${index + 1}] Đã gửi: "${messageToSend}" (${sentCount}/${MAX_MESSAGES})`);
+                    console.log(`[Bot 3 - Acc ${index + 1}] Đã chat: "${messageToSend}" (${sentCount}/${MAX_MESSAGES})`);
 
                 } catch (err) {
                     if (err.status === 429) {
@@ -107,7 +309,7 @@ async function startBot(token, index) {
                         console.error(`[Bot 3] Nick ${index + 1} lỗi gửi tin:`, err.message);
                     }
                 } finally {
-                    // GIẢI PHÓNG KHÓA LUÔN LUÔN ĐƯỢC THỰC THI (DÙ LỖI HAY THÀNH CÔNG)
+                    // GIẢI PHÓNG KHÓA LUÔN LUÔN ĐƯỢC THỰC THI
                     isGlobalChatting = false;
                 }
 
@@ -117,10 +319,10 @@ async function startBot(token, index) {
                     break;
                 }
 
-                // Giãn cách cá nhân sau mỗi lượt gõ thành công
+                // Giãn cách cá nhân sau mỗi lượt chat thành công (45 - 90 giây)
                 const randomBreakTrigger = getRandomInt(10, 20);
                 if (sentCount % randomBreakTrigger === 0) {
-                    const longBreak = getRandomInt(240, 480); // Nghỉ 4 - 8 phút
+                    const longBreak = getRandomInt(240, 480); // Nghỉ dài 4 - 8 phút
                     console.log(`[Bot 3 - Acc ${index + 1}] Nghỉ giải lao ${(longBreak/60).toFixed(1)} phút...`);
                     await delayTime(longBreak * 1000);
                 } else {
@@ -141,7 +343,7 @@ async function startBot(token, index) {
 }
 
 async function runAllBots() {
-    console.log('[System] Đang khởi động các tài khoản so le...');
+    console.log('[System] Đang khởi động các tài khoản chat so le...');
     const tokens = await getTokens();
     if (tokens.length === 0) return;
     
