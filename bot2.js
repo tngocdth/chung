@@ -38,13 +38,12 @@ async function connectVoice(token, index, channelId) {
     }
 
     client.on('ready', () => {
-        console.log(`[Acc ${index + 1}] Đã đăng nhập: ${client.user.tag}`);
-        joinVoice(); // Chỉ gọi 1 lần khi bot sẵn sàng
+        console.log(`[Acc ${index + 1}] Đã đăng nhập voice: ${client.user.tag}`);
+        joinVoice();
     });
 
-    // Tự động kết nối lại khi mất mạng / ngắt kết nối
     client.on('shardDisconnect', () => {
-        console.warn(`[Acc ${index + 1}] Mất kết nối! Đang thử vào lại sau 5s...`);
+        console.warn(`[Acc ${index + 1}] Mất kết nối voice! Đang thử vào lại sau 5s...`);
         setTimeout(joinVoice, 5000);
     });
 
