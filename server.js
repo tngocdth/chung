@@ -31,10 +31,10 @@ function cleanMemory() {
 
 setInterval(cleanMemory, SIX_HOURS);
 
-// 3. Khớp chính xác tên file thực tế của bạn
+// 3. Khớp chính xác tên file thực tế trong thư mục của bạn
 const scripts = [
-    'bot2_3.js',
-    'bot3_2.js'
+    'bot2.js',
+    'bot3.js'
 ];
 
 console.log('>>> Bắt đầu kích hoạt tiến trình bot ngầm...\n');
