@@ -3,9 +3,9 @@ const fs = require('fs');
 const cron = require('node-cron');
 
 const CHANNEL_ID = "1543140705206276158";
-const MAX_MESSAGES = 200; // Giới hạn số tin nhắn an toàn mỗi ngày cho mỗi nick
+const MAX_MESSAGES = 250; // Giới hạn chỉ tiêu mỗi ngày cho mỗi nick
 
-let isGlobalChatting = false; // Biến khóa hàng chờ toàn cục để tránh spam dồn dập
+let isGlobalChatting = false; // Khóa hàng chờ toàn cục
 
 // Danh sách 500 câu chat đa dạng
 const PURE_CHAT_TEMPLATES = [
@@ -210,40 +210,32 @@ function getRandomFloat(min, max) {
     return Math.random() * (max - min) + min;
 }
 
-// Hàm kiểm tra lịch sử chat và chọn câu chưa từng xuất hiện gần đây
 async function generateUniqueMessageWithTag(channel, currentClientUser) {
     let recentTexts = [];
     let recentUsers = [];
 
     try {
-        // Quét 40 tin nhắn gần nhất trong kênh
         const recentMessages = await channel.messages.fetch({ limit: 40 });
 
         recentMessages.forEach(msg => {
             if (msg.content) {
                 recentTexts.push(msg.content.trim().toLowerCase());
             }
-            // Thu thập các thành viên thật gần đây (bỏ qua bot và chính mình)
             if (msg.author && !msg.author.bot && msg.author.id !== currentClientUser.id) {
                 if (!recentUsers.some(u => u.id === msg.author.id)) {
                     recentUsers.push(msg.author);
                 }
             }
         });
-    } catch (err) {
-        // Lỗi đọc kênh thì bỏ qua
-    }
+    } catch (err) {}
 
-    // Lọc ra danh sách những câu chưa từng xuất hiện trong 40 tin nhắn gần đây
     const availableTemplates = PURE_CHAT_TEMPLATES.filter(tpl => {
         return !recentTexts.some(text => text.includes(tpl.toLowerCase()));
     });
 
-    // Nếu lọc xong vẫn còn câu thì chọn câu mới, nếu hết thì lấy ngẫu nhiên từ mảng gốc
     const pool = availableTemplates.length > 0 ? availableTemplates : PURE_CHAT_TEMPLATES;
     let selectedText = pool[Math.floor(Math.random() * pool.length)];
 
-    // Tỷ lệ 40% sẽ chèn thêm tag/tên của một thành viên ngẫu nhiên gần đây
     if (Math.random() < 0.4 && recentUsers.length > 0) {
         const randomUser = recentUsers[Math.floor(Math.random() * recentUsers.length)];
         const userTag = Math.random() < 0.5 ? `<@${randomUser.id}>` : `${randomUser.username}`;
@@ -271,28 +263,22 @@ async function startBot(token, index) {
             while (sentCount < MAX_MESSAGES) {
                 if (!client.isReady()) break;
 
-                // Xếp hàng: Chờ nick khác hoàn thành lượt chat
                 while (isGlobalChatting) {
                     await delayTime(1000);
                 }
 
-                // BẮT ĐẦU CHIẾM KHÓA
                 isGlobalChatting = true;
 
                 try {
-                    // Giãn cách trước khi gõ chữ (10 - 25s)
                     const silentDelay = getRandomInt(10, 25);
                     await delayTime(silentDelay * 1000);
 
-                    // Lấy câu chat mới không trùng lặp + tag ngẫu nhiên
                     const messageToSend = await generateUniqueMessageWithTag(channel, client.user);
 
-                    // Gi giả lập trạng thái đang gõ phím (2 - 4s)
                     await channel.sendTyping();
                     const typingTime = getRandomInt(2, 4); 
                     await delayTime(typingTime * 1000);
 
-                    // Gửi tin nhắn chữ
                     await channel.send(messageToSend);
                     sentCount++;
                     console.log(`[Bot 3 - Acc ${index + 1}] Đã chat: "${messageToSend}" (${sentCount}/${MAX_MESSAGES})`);
@@ -309,7 +295,6 @@ async function startBot(token, index) {
                         console.error(`[Bot 3] Nick ${index + 1} lỗi gửi tin:`, err.message);
                     }
                 } finally {
-                    // GIẢI PHÓNG KHÓA LUÔN LUÔN ĐƯỢC THỰC THI
                     isGlobalChatting = false;
                 }
 
@@ -319,10 +304,9 @@ async function startBot(token, index) {
                     break;
                 }
 
-                // Giãn cách cá nhân sau mỗi lượt chat thành công (45 - 90 giây)
                 const randomBreakTrigger = getRandomInt(10, 20);
                 if (sentCount % randomBreakTrigger === 0) {
-                    const longBreak = getRandomInt(240, 480); // Nghỉ dài 4 - 8 phút
+                    const longBreak = getRandomInt(240, 480);
                     console.log(`[Bot 3 - Acc ${index + 1}] Nghỉ giải lao ${(longBreak/60).toFixed(1)} phút...`);
                     await delayTime(longBreak * 1000);
                 } else {
@@ -358,7 +342,6 @@ async function runAllBots() {
     }
 }
 
-// Lên lịch reset làm mới tiến trình lúc 1:10 sáng VN (18:10 UTC)
 cron.schedule('10 18 * * *', async () => {
     console.log('[System] Làm mới tiến trình ngày mới...');
     for (let client of activeClients) {
