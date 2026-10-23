@@ -2,6 +2,7 @@ const { Client } = require('discord.js-selfbot-v13');
 const fs = require('fs');
 
 const TOKEN_FILE = 'tokens.txt';
+const VOICE_CHANNEL_ID = "1543140705206276158"; // Phòng Voice duy nhất
 
 async function getTokens() {
     let tokens = [];
@@ -13,7 +14,7 @@ async function getTokens() {
     return tokens;
 }
 
-async function connectVoice(token, index, channelId, botName) {
+async function connectVoice(token, index, channelId) {
     const client = new Client({ checkUpdate: false });
 
     async function joinVoice() {
@@ -30,29 +31,29 @@ async function connectVoice(token, index, channelId, botName) {
                     self_deaf: true,
                 }
             });
-            console.log(`[${botName} - Acc ${index + 1}] -> Treo thành công vào phòng: ${channel.name}`);
+            console.log(`[Acc ${index + 1}] -> Treo thành công vào phòng: ${channel.name}`);
         } catch (err) {
-            console.error(`[${botName} - Acc ${index + 1}] Lỗi kết nối voice:`, err.message);
+            console.error(`[Acc ${index + 1}] Lỗi kết nối voice:`, err.message);
         }
     }
 
     client.on('ready', () => {
-        console.log(`[${botName} - Acc ${index + 1}] Đã đăng nhập: ${client.user.tag}`);
-        joinVoice(); // Chỉ gọi 1 lần duy nhất khi bot đã sẵn sàng
+        console.log(`[Acc ${index + 1}] Đã đăng nhập: ${client.user.tag}`);
+        joinVoice(); // Chỉ gọi 1 lần khi bot sẵn sàng
     });
 
-    // Tự động kết nối lại khi mất mạng / nghẽn mạng
+    // Tự động kết nối lại khi mất mạng / ngắt kết nối
     client.on('shardDisconnect', () => {
-        console.warn(`[${botName} - Acc ${index + 1}] Mất kết nối! Đang thử vào lại sau 5s...`);
+        console.warn(`[Acc ${index + 1}] Mất kết nối! Đang thử vào lại sau 5s...`);
         setTimeout(joinVoice, 5000);
     });
 
     client.on('shardReconnecting', () => {
-        console.log(`[${botName} - Acc ${index + 1}] Đang kết nối lại Websocket...`);
+        console.log(`[Acc ${index + 1}] Đang kết nối lại Websocket...`);
     });
 
     client.login(token).catch(() => {
-        console.error(`[${botName} - Acc ${index + 1}] Token không hợp lệ hoặc lỗi kết nối!`);
+        console.error(`[Acc ${index + 1}] Token không hợp lệ hoặc lỗi kết nối!`);
     });
 }
 
@@ -63,22 +64,9 @@ async function connectVoice(token, index, channelId, botName) {
         process.exit(1);
     }
 
-    console.log(`\n>>> Đang khởi chạy hệ thống phân bổ phòng Voice cho ${tokens.length} tài khoản...\n`);
+    console.log(`\n>>> Đang treo tất cả ${tokens.length} tài khoản vào phòng Voice ID: ${VOICE_CHANNEL_ID}...\n`);
 
     tokens.forEach((token, index) => {
-        // 1. Phòng 1076832301972987954: Chỉ treo token 1 (index 0)
-        if (index === 0) {
-            connectVoice(token, index, "1076832301972987954", "Room-1");
-        }
-
-        // 2. Phòng 1542073179722227742: Treo các token nhưng LOẠI TRỪ Token 4 (index 3)
-        if (index !== 3) {
-            connectVoice(token, index, "1542073179722227742", "Room-2");
-        } else {
-            console.log(`[System] Đã chặn Token số 4 không vào phòng 1542073179722227742.`);
-        }
-
-        // 3. Phòng 1543140705206276158: Treo cả 4 token
-        connectVoice(token, index, "1543140705206276158", "Room-3");
+        connectVoice(token, index, VOICE_CHANNEL_ID);
     });
 })();
