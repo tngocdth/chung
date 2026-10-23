@@ -31,7 +31,7 @@ function cleanMemory() {
 
 setInterval(cleanMemory, SIX_HOURS);
 
-// 3. Danh sách các file bot cần chạy ngầm (Đã bật cả bot2 và bot3)
+// 3. Danh sách các file bot cần chạy ngầm
 const scripts = [
     'bot2.js',
     'bot3.js'
