@@ -3,11 +3,11 @@ const fs = require('fs');
 const cron = require('node-cron');
 
 const CHANNEL_ID = "1543140705206276158";
-const MAX_MESSAGES = 200; // Mỗi nick chạy 200 tin (5 nick = 1000 tin tổng cộng)
+const MAX_MESSAGES = 1000; // Chỉ tiêu 1.000 tin nhắn cho MỖI NICK
 
-let isGlobalChatting = false; // Biến khóa hàng chờ toàn cục để các nick luân phiên chat
+let isGlobalChatting = false; // Khóa luân phiên giữa các nick
 
-// Danh sách 500 câu chat đa dạng
+// Danh sách 500 câu chat
 const PURE_CHAT_TEMPLATES = [
     // --- 1. CHÀO HỎI & NGOI LÊN (1 - 50) ---
     "Hello cả nhà nhé!", "Mọi người ơi, có ai ở đây không nhở?", "Lên đây điểm danh phát nào ae ơi", 
@@ -143,7 +143,7 @@ const PURE_CHAT_TEMPLATES = [
     "Nối từ không anh em?", "Đố vui có thưởng nào", "Ai thông minh hơn học sinh lớp 5", 
     "Bí ẩn thế giới thật kỳ diệu", "Đúng là trăm nghe không bằng một thấy", 
     "Mỗi ngày học thêm một điều mới", "Trải nghiệm thực tế vẫn là tốt nhất", 
-    "Nói ít hiểu nhiều nha", "Học ăn học nói học gói học mở", "Lời nói không mất tiền mua...", 
+    "Nói ít hiểu nhiều nha", "H học ăn học nói học gói học mở", "Lời nói không mất tiền mua...", 
     "Nói chuyện dễ thương ghê", "Khen thiệt lòng đó nha", "Cảm ơn mọi người nhiều nhé", 
     "Chúc mọi người may mắn", "Thật là tuyệt vời", "Thích không khí ở đây ghê", 
     "Mọi người nhiệt tình quá", "Đúng là môi trường văn minh", "Thả tim cho cả nhà nè", 
@@ -185,4 +185,176 @@ const PURE_CHAT_TEMPLATES = [
     "Gửi gắm ngàn lời chúc tốt đẹp", "Nghỉ ngơi thôi, muộn lắm rồi", 
     "Tắt máy đi ngủ thôi anh em ơi", "Hẹn gặp lại mọi người vào ngày mai", 
     "Good night cả nhà nhé!", "Ngủ ngon và mơ đẹp nha", "Tắt đèn tối thui rồi", 
-    "Cú đêm chuẩn bị thăng đây", "Mắt nhắm tịt lại rồi
+    "Cú đêm chuẩn bị thăng đây", "Mắt nhắm tịt lại rồi", "Chào tạm biệt mọi người nha", 
+    "Mai lại gặp lại chém gió tiếp", "Chúc mọi người có một giấc ngủ thật ngon", 
+    "Khép lại một ngày dài...", "Hẹn hò ngày mai nhé!", "Sweet dreams mọi người ❤️"
+];
+
+let activeClients = [];
+
+async function getTokens() {
+    let tokens = [];
+    if (process.env.DISCORD_TOKEN) {
+        tokens = process.env.DISCORD_TOKEN.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    } else if (fs.existsSync('tokens.txt')) {
+        tokens = fs.readFileSync('tokens.txt', 'utf-8').split('\n').map(t => t.trim()).filter(t => t.length > 0 && !t.startsWith('#'));
+    }
+    return tokens;
+}
+
+function getRandomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getRandomFloat(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
+async function generateUniqueMessageWithTag(channel, currentClientUser) {
+    let recentTexts = [];
+    let recentUsers = [];
+
+    try {
+        const recentMessages = await channel.messages.fetch({ limit: 40 });
+
+        recentMessages.forEach(msg => {
+            if (msg.content) {
+                recentTexts.push(msg.content.trim().toLowerCase());
+            }
+            if (msg.author && !msg.author.bot && msg.author.id !== currentClientUser.id) {
+                if (!recentUsers.some(u => u.id === msg.author.id)) {
+                    recentUsers.push(msg.author);
+                }
+            }
+        });
+    } catch (err) {}
+
+    const availableTemplates = PURE_CHAT_TEMPLATES.filter(tpl => {
+        return !recentTexts.some(text => text.includes(tpl.toLowerCase()));
+    });
+
+    const pool = availableTemplates.length > 0 ? availableTemplates : PURE_CHAT_TEMPLATES;
+    let selectedText = pool[Math.floor(Math.random() * pool.length)];
+
+    if (Math.random() < 0.4 && recentUsers.length > 0) {
+        const randomUser = recentUsers[Math.floor(Math.random() * recentUsers.length)];
+        const userTag = Math.random() < 0.5 ? `<@${randomUser.id}>` : `${randomUser.username}`;
+        selectedText = `${selectedText} ${userTag}`;
+    }
+
+    return selectedText;
+}
+
+const delayTime = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function startBot(token, index) {
+    const client = new Client({ checkUpdate: false });
+    activeClients.push(client);
+
+    client.on('ready', async () => {
+        console.log(`[Bot 3 - Acc ${index + 1}] Nick online: ${client.user.tag}`);
+        
+        try {
+            const channel = await client.channels.fetch(CHANNEL_ID);
+            if (!channel) return;
+
+            let sentCount = 0;
+
+            while (sentCount < MAX_MESSAGES) {
+                if (!client.isReady()) break;
+
+                while (isGlobalChatting) {
+                    await delayTime(1000);
+                }
+
+                isGlobalChatting = true;
+
+                try {
+                    // Giãn cách ngắn trước khi gõ chữ (8 - 15 giây)
+                    const silentDelay = getRandomInt(8, 15);
+                    await delayTime(silentDelay * 1000);
+
+                    const messageToSend = await generateUniqueMessageWithTag(channel, client.user);
+
+                    await channel.sendTyping();
+                    const typingTime = getRandomInt(2, 4); 
+                    await delayTime(typingTime * 1000);
+
+                    await channel.send(messageToSend);
+                    sentCount++;
+                    console.log(`[Bot 3 - Acc ${index + 1}] Đã chat: "${messageToSend}" (${sentCount}/${MAX_MESSAGES})`);
+
+                } catch (err) {
+                    if (err.status === 429) {
+                        const retryAfter = err.retryAfter ? err.retryAfter * 1000 : 15000;
+                        console.warn(`[Bot 3] Acc ${index + 1} dính Rate Limit, nhường lượt và chờ ${retryAfter/1000}s...`);
+                        await delayTime(retryAfter);
+                    } else if (err.status === 401) {
+                        console.error(`[Bot 3] Acc ${index + 1} lỗi token.`);
+                        break;
+                    } else {
+                        console.error(`[Bot 3] Acc ${index + 1} lỗi gửi tin:`, err.message);
+                    }
+                } finally {
+                    isGlobalChatting = false;
+                }
+
+                if (sentCount >= MAX_MESSAGES) {
+                    console.log(`[Bot 3 - Acc ${index + 1}] Hoàn thành chỉ tiêu 1.000 tin.`);
+                    await client.destroy();
+                    break;
+                }
+
+                // Căn chỉnh giãn cách rải đều trong 16 tiếng (50 - 80 giây mỗi tin)
+                const randomBreakTrigger = getRandomInt(30, 50);
+                if (sentCount % randomBreakTrigger === 0) {
+                    const longBreak = getRandomInt(180, 360); // Nghỉ giải lao 3 - 6 phút
+                    console.log(`[Bot 3 - Acc ${index + 1}] Nghỉ giải lao ${(longBreak/60).toFixed(1)} phút...`);
+                    await delayTime(longBreak * 1000);
+                } else {
+                    const normalDelay = getRandomFloat(50, 80);
+                    await delayTime(normalDelay * 1000);
+                }
+            }
+
+        } catch (err) {
+            console.error(`[Bot 3] Lỗi Acc ${index + 1}:`, err.message);
+            isGlobalChatting = false;
+        }
+    });
+
+    client.login(token).catch(() => {
+        console.error(`[Bot 3 - Acc ${index + 1}] Lỗi đăng nhập token.`);
+    });
+}
+
+async function runAllBots() {
+    console.log('[System] Khởi chạy các tài khoản chat chạy song song (Tiến độ 16h)...');
+    const tokens = await getTokens();
+    if (tokens.length === 0) {
+        console.error('[Bot 3] Không tìm thấy token nào trong tokens.txt!');
+        return;
+    }
+    
+    for (let index = 0; index < tokens.length; index++) {
+        const token = tokens[index];
+        if (index > 0) {
+            const startupDelay = getRandomInt(30, 90);
+            console.log(`[System] Chờ ${startupDelay}s trước khi cho Acc ${index + 1} vào mạng...`);
+            await delayTime(startupDelay * 1000);
+        }
+        startBot(token, index);
+    }
+}
+
+cron.schedule('10 18 * * *', async () => {
+    console.log('[System] Tự động làm mới tiến trình ngày mới...');
+    for (let client of activeClients) {
+        try { await client.destroy(); } catch (e) {}
+    }
+    activeClients = [];
+    isGlobalChatting = false;
+    runAllBots();
+});
+
+runAllBots();
